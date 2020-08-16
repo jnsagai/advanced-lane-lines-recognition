@@ -2,6 +2,73 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
+##############################################################################
+###############################   CLASSES   ##################################
+##############################################################################
+
+# Define a class to receive the characteristics of each line detection
+class Line():
+    def __init__(self):
+        # was the line detected in the last iteration?
+        self.detected = False  
+        # x values of the last n fits of the line
+        self.recent_xfitted = [] 
+        #average x values of the fitted line over the last n iterations
+        self.bestx = None     
+        #polynomial coefficients averaged over the last n iterations
+        self.best_fit = None  
+        #polynomial coefficients for the most recent fit
+        self.current_fit = [np.array([False])]  
+        #radius of curvature of the line in some units
+        self.radius_of_curvature = None 
+        #distance in meters of vehicle center from the line
+        self.line_base_pos = None 
+        #difference in fit coefficients between last and new fits
+        self.diffs = np.array([0,0,0], dtype='float') 
+        #x values for detected line pixels
+        self.allx = None  
+        #y values for detected line pixels
+        self.ally = None  
+
+# Define a class to storage the last n elements in a ring buffer       
+class RingBuffer:
+    """ class that implements a not-yet-full buffer """
+    def __init__(self,size_max):
+        self.max = size_max
+        self.data = []
+
+    class __Full:
+        """ class that implements a full buffer """
+        def append(self, x):
+            """ Append an element overwriting the oldest one. """
+            self.data[self.cur] = x
+            self.cur = (self.cur+1) % self.max
+        def get(self):
+            """ return list of elements in correct order """
+            return self.data[self.cur:]+self.data[:self.cur]
+        def clear(self):
+            """ Clear all the data. """
+            self.data = []
+
+    def append(self,x):
+        """append an element at the end of the buffer"""
+        self.data.append(x)
+        if len(self.data) == self.max:
+            self.cur = 0
+            # Permanently change self's class from non-full to full
+            self.__class__ = self.__Full
+
+    def get(self):
+        """ Return a list of elements from the oldest to the newest. """
+        return self.data
+    
+    def clear(self):
+        """ Clear all the data. """
+        self.data = []
+
+##############################################################################
+##############################   FUNCTIONS   #################################
+##############################################################################
 def abs_sobel_thresh(img, orient='x', sobel_kernel=3, thresh = (0, 255)):
     
     # Apply the following steps to img
@@ -101,6 +168,31 @@ def hls_threshold(img, thresh_h = (0,255), thresh_l = (0,255), thresh_s = (0, 25
     combined_hls[((bin_h == 1) & (bin_s == 1)) | (bin_l == 1)] = 1
     
     return combined_hls
+
+def region_of_interest(img, vertices):
+    """
+    Applies an image mask.
+    
+    Only keeps the region of the image defined by the polygon
+    formed from `vertices`. The rest of the image is set to black.
+    `vertices` should be a numpy array of integer points.
+    """
+    #defining a blank mask to start with
+    mask = np.zeros_like(img)   
+    
+    #defining a 3 channel or 1 channel color to fill the mask with depending on the input image
+    if len(img.shape) > 2:
+        channel_count = img.shape[2]  # i.e. 3 or 4 depending on your image
+        ignore_mask_color = (255,) * channel_count
+    else:
+        ignore_mask_color = 255
+        
+    #filling pixels inside the polygon defined by "vertices" with the fill color    
+    cv2.fillPoly(mask, vertices, ignore_mask_color)    
+ 
+    #returning the image only where mask pixels are nonzero
+    masked_image = cv2.bitwise_and(img, mask)
+    return masked_image
 
 def warp_image(img, src, dst):
     
@@ -262,11 +354,7 @@ def fit_polynomial(binary_warped):
         'right_x' : rightx,
         'right_y' : righty
         }
-
-    # Plots the left and right polynomials on the lane lines
-    # plt.plot(left_fitx, ploty, color='yellow')
-    # plt.plot(right_fitx, ploty, color='yellow')
-    
+   
     draw_points = (np.asarray([left_fitx, ploty]).T).astype(np.int32) 
     cv2.polylines(out_img, [draw_points], False, (255,255,60), thickness = 5)
     draw_points = (np.asarray([right_fitx, ploty]).T).astype(np.int32) 
@@ -369,10 +457,10 @@ def write_metrics(image, left_curverad, right_curverad, car_center_dev):
     cv2.putText(img_w_metrics, 'Radius of Curvature: {0:d} m'.format(int(avg_curv)), (70, 70), 
                 cv2.FONT_HERSHEY_SIMPLEX , font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
     if car_center_dev <= 0:        
-        cv2.putText(img_w_metrics, 'Vehicle is: {0:2.2f} m left of center'.format(car_center_dev), (70, 130), 
+        cv2.putText(img_w_metrics, 'Vehicle is: {0:2.2f} m left of center'.format(abs(car_center_dev)), (70, 130), 
                 cv2.FONT_HERSHEY_SIMPLEX , font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
     else:
-        cv2.putText(img_w_metrics, 'Vehicle is: {0:2.2f} m right of center'.format(car_center_dev), (70, 130), 
+        cv2.putText(img_w_metrics, 'Vehicle is: {0:2.2f} m right of center'.format(abs(car_center_dev)), (70, 130), 
                 cv2.FONT_HERSHEY_SIMPLEX , font_scale, (255, 255, 255), thickness, cv2.LINE_AA)       
     
     return img_w_metrics

@@ -14,12 +14,12 @@ import matplotlib.image as mpimg
 
 import AdvancedComputerVision as acv
 
-sx_thresh = (40 , 100)
-mag_thresh = (40, 200)
-dir_thresh = (0.6, 1.4)
+sx_thresh = (60 , 100)
+mag_thresh = (60, 200)
+dir_thresh = (0.5, 1.1)
 
 # HLS Channels threshold
-h_thresh = (10, 100)
+h_thresh = (5, 100)
 l_thresh = (210, 255)
 s_thresh = (100, 255)
 
@@ -27,6 +27,8 @@ s_thresh = (100, 255)
 w_offset = 350
 h_offset = 0
 
+# Define an offset for the ROI relative to the transformation source polygon
+roi_offset = 30
 
 # src = np.float32([[200,720], [588,450], [693,450], [1120,720]])
 # dst = np.float32([[316, 720], [316, 0], [959, 0],  [959, 720]])
@@ -63,9 +65,6 @@ undistorted = acv.cal_undistort(test_image, mtx, dist)
 # Safety copy of the image
 img = np.copy(undistorted)
 
-# Convert to gray scale
-gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-
 combined_hls = acv.hls_threshold(img, h_thresh, l_thresh, s_thresh)
 
 sxbinary = acv.abs_sobel_thresh(img, orient='x', sobel_kernel = 3, thresh = sx_thresh)
@@ -96,9 +95,17 @@ dst = np.float32([[w_offset, img_h - h_offset],
                   [img_w - w_offset, h_offset],
                   [img_w - w_offset, img_h - h_offset]])
 
-warped_img, M, Minv = acv.warp_image(combined_binary, src, dst)
+# Create a mask edge for a region of interest
+vertices = np.array([[(src[0][0] - roi_offset, src[0][1]),
+                      (src[1][0] - roi_offset, src[1][1] - roi_offset),
+                      (src[2][0] + roi_offset, src[2][1] - roi_offset),
+                      (src[3][0] + roi_offset, src[3][1])]], dtype=np.int32)
 
-warped_color, _, _ = acv.warp_image(undistorted, src, dst)
+masked_edges = acv.region_of_interest(combined_binary, vertices)
+
+warped_img, M, Minv = acv.warp_image(masked_edges, src, dst)
+
+# warped_color, _, _ = acv.warp_image(undistorted, src, dst)
 
 poly_img, left_fit, left_fitx, right_fit, right_fitx, ploty, roi_pixels = acv.fit_polynomial(warped_img)
 
@@ -126,11 +133,11 @@ f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(20,10))
 ax1.set_title('Stacked thresholds')
 ax1.imshow(undistorted)
 
-# ax2.set_title('Combined images')
-# ax2.imshow(combined_binary, cmap='gray')
+ax2.set_title('Combined hls')
+ax2.imshow(masked_edges, cmap='gray')
 
-ax2.set_title('Final image')
-ax2.imshow(final_image)
+# ax2.set_title('Final image')
+# ax2.imshow(final_image)
 
 ax3.set_title('Warped Image')
 ax3.imshow(warped_img, cmap='gray')
