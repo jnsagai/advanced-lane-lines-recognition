@@ -6,30 +6,6 @@ import matplotlib.pyplot as plt
 ###############################   CLASSES   ##################################
 ##############################################################################
 
-# Define a class to receive the characteristics of each line detection
-class Line():
-    def __init__(self):
-        # was the line detected in the last iteration?
-        self.detected = False  
-        # x values of the last n fits of the line
-        self.recent_xfitted = [] 
-        #average x values of the fitted line over the last n iterations
-        self.bestx = None     
-        #polynomial coefficients averaged over the last n iterations
-        self.best_fit = None  
-        #polynomial coefficients for the most recent fit
-        self.current_fit = [np.array([False])]  
-        #radius of curvature of the line in some units
-        self.radius_of_curvature = None 
-        #distance in meters of vehicle center from the line
-        self.line_base_pos = None 
-        #difference in fit coefficients between last and new fits
-        self.diffs = np.array([0,0,0], dtype='float') 
-        #x values for detected line pixels
-        self.allx = None  
-        #y values for detected line pixels
-        self.ally = None  
-
 # Define a class to storage the last n elements in a ring buffer       
 class RingBuffer:
     """ class that implements a not-yet-full buffer """
@@ -322,6 +298,59 @@ def find_lane_pixels(binary_warped):
 
     return leftx, lefty, rightx, righty, out_img
 
+def fit_poly(img_shape, leftx, lefty, rightx, righty):
+
+    error = False
+    
+    left_fit = np.polyfit(lefty, leftx, 2)
+    right_fit = np.polyfit(righty, rightx, 2)
+    # Generate x and y values for plotting
+    ploty = np.linspace(0, img_shape[0]-1, img_shape[0])
+    # Calc both polynomials using ploty, left_fit and right_fit #
+    try:
+        left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+        right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+    except:
+        error = True
+    
+    return error, left_fit, right_fit, left_fitx, right_fitx, ploty
+
+def search_around_poly(binary_warped, prev_left_fit, prev_right_fit):
+    # HYPERPARAMETER
+    # Choose the width of the margin around the previous polynomial to search
+    # The quiz grader expects 100 here, but feel free to tune on your own!
+    margin = 100
+
+    # Grab activated pixels
+    nonzero = binary_warped.nonzero()
+    nonzeroy = np.array(nonzero[0])
+    nonzerox = np.array(nonzero[1])
+    
+    left_lane_inds = ((nonzerox > (prev_left_fit[0]*(nonzeroy**2) + prev_left_fit[1]*nonzeroy + 
+                    prev_left_fit[2] - margin)) & (nonzerox < (prev_left_fit[0]*(nonzeroy**2) + 
+                    prev_left_fit[1]*nonzeroy + prev_left_fit[2] + margin)))
+    right_lane_inds = ((nonzerox > (prev_right_fit[0]*(nonzeroy**2) + prev_right_fit[1]*nonzeroy + 
+                    prev_right_fit[2] - margin)) & (nonzerox < (prev_right_fit[0]*(nonzeroy**2) + 
+                    prev_right_fit[1]*nonzeroy + prev_right_fit[2] + margin)))
+    
+    # Again, extract left and right line pixel positions
+    leftx = nonzerox[left_lane_inds]
+    lefty = nonzeroy[left_lane_inds] 
+    rightx = nonzerox[right_lane_inds]
+    righty = nonzeroy[right_lane_inds]
+
+    # Create a dictionary to store all the nonzero pixels in the ROI
+    roi_pixels = {
+        'left_x' : leftx,
+        'left_y' : lefty,
+        'right_x' : rightx,
+        'right_y' : righty
+        }
+
+    # Fit new polynomials
+    error, left_fit, right_fit, left_fitx, right_fitx, ploty = fit_poly(binary_warped.shape, leftx, lefty, rightx, righty)    
+    
+    return error, left_fit, left_fitx, right_fit, right_fitx, ploty, roi_pixels
 
 def fit_polynomial(binary_warped):
     # Find our lane pixels first
@@ -362,14 +391,24 @@ def fit_polynomial(binary_warped):
     
     return out_img, left_fit, left_fitx, right_fit, right_fitx, ploty, roi_pixels
 
-def measure_curvature_real(ploty, left_fit_cr, right_fit_cr):
+def measure_curvature_real(ploty, roi_pixels):
     '''
     Calculates the curvature of polynomial functions in meters.
     '''
     # Define conversions in x and y from pixels space to meters
     ym_per_pix = 30/720 # meters per pixel in y dimension
+    #ym_per_pix = 30/810 # meters per pixel in y dimension
     xm_per_pix = 3.7/700 # meters per pixel in x dimension
+    #xm_per_pix = 3.7/515 # meters per pixel in x dimension
     
+    # Unpack the ROI pixels
+    leftx = roi_pixels['left_x']
+    lefty = roi_pixels['left_y']
+    rightx = roi_pixels['right_x']
+    righty = roi_pixels['right_y']
+    
+    left_fit_cr = np.polyfit(lefty*ym_per_pix, leftx*xm_per_pix, 2)
+    right_fit_cr = np.polyfit(righty*ym_per_pix, rightx*xm_per_pix, 2)
     # Define y-value where we want radius of curvature
     # We'll choose the maximum y-value, corresponding to the bottom of the image
     y_eval = np.max(ploty)
