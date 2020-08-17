@@ -1,9 +1,3 @@
-## Writeup Template
-
-### You can use this file as a template for your writeup if you want to submit it as a markdown file, but feel free to use some other method and submit a pdf if you prefer.
-
----
-
 **Advanced Lane Finding Project**
 
 The goals / steps of this project are the following:
@@ -19,13 +13,13 @@ The goals / steps of this project are the following:
 
 [//]: # (Image References)
 
-[image1]: ./examples/undistort_output.png "Undistorted"
-[image2]: ./test_images/test1.jpg "Road Transformed"
-[image3]: ./examples/binary_combo_example.jpg "Binary Example"
-[image4]: ./examples/warped_straight_lines.jpg "Warp Example"
-[image5]: ./examples/color_fit_lines.jpg "Fit Visual"
-[image6]: ./examples/example_output.jpg "Output"
-[video1]: ./project_video.mp4 "Video"
+[image1]: ./output_images/Undistorted_Chess_Image.png "Undistorted"
+[image2]: ./output_images/Undistorted_Car_Image.png "Road Transformed"
+[image3]: ./output_images/ThresholdedBinaryImage.png "Binary Example"
+[image4]: ./output_images/WarpedImage.png "Warp Example"
+[image5]: ./output_images/LaneLinePixels.png "Fit Visual"
+[image6]: ./output_images/Final_Image.png "Output"
+[video1]: ./output_videos/project_video.mp4 "Video"
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/571/view) Points
 
@@ -33,68 +27,99 @@ The goals / steps of this project are the following:
 
 ---
 
-### Writeup / README
-
-#### 1. Provide a Writeup / README that includes all the rubric points and how you addressed each one.  You can submit your writeup as markdown or pdf.  [Here](https://github.com/udacity/CarND-Advanced-Lane-Lines/blob/master/writeup_template.md) is a template writeup for this project you can use as a guide and a starting point.  
-
-You're reading it!
-
 ### Camera Calibration
 
-#### 1. Briefly state how you computed the camera matrix and distortion coefficients. Provide an example of a distortion corrected calibration image.
+The first step for the Camera Calibration was preparing the object points using x, y and z coordinates, where the chessboard corners will be stored. I used the given set of calibration image to doing so, where each image contains 6 x 9 corners.
 
-The code for this step is contained in the first code cell of the IPython notebook located in "./examples/example.ipynb" (or in lines # through # of the file called `some_file.py`).  
+After that, I've created two arrays to store the object points (3D points in real world space) and the image points (2D points in image plane). Afterwards the algorithm iterate over each image in the image set where, for each iteration, the image was converted to gray scale and the OpenCV function `cv2.findChessboardCorners` was used to find out the chessboard corners, then the amount was appended in the image points array.
 
-I start by preparing "object points", which will be the (x, y, z) coordinates of the chessboard corners in the world. Here I am assuming the chessboard is fixed on the (x, y) plane at z=0, such that the object points are the same for each calibration image.  Thus, `objp` is just a replicated array of coordinates, and `objpoints` will be appended with a copy of it every time I successfully detect all chessboard corners in a test image.  `imgpoints` will be appended with the (x, y) pixel position of each of the corners in the image plane with each successful chessboard detection.  
+When the iterations are finally completed, the camera matrix and the distortion coefficient is calculated using OpenCV function `cv2.calibrateCamera`.
 
-I then used the output `objpoints` and `imgpoints` to compute the camera calibration and distortion coefficients using the `cv2.calibrateCamera()` function.  I applied this distortion correction to the test image using the `cv2.undistort()` function and obtained this result: 
+I applied the camera matrix and the distortion coefficient to generate a test image using the `cv2.undistort()` function and obtained this result: 
 
 ![alt text][image1]
 
 ### Pipeline (single images)
 
-#### 1. Provide an example of a distortion-corrected image.
+#### 1. Frame distortion correction
 
-To demonstrate this step, I will describe how I apply the distortion correction to one of the test images like this one:
+The first step in the pipeline is to correct the frame distortion by applying the Camera Matrix and the distortion coefficient calculated previously in the Camera Calibration step. I've used the OpenCV `cv2.undistort()` function to undistort the frame. An example of frame before and after being undistorted follows below:
+
 ![alt text][image2]
 
-#### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
+#### 2. Create a thresholded binary image
 
-I used a combination of color and gradient thresholds to generate a binary image (thresholding steps at lines # through # in `another_file.py`).  Here's an example of my output for this step.  (note: this is not actually from one of the test images)
+In order to identify the relevant pixels in the image which represent the left and right lane-lines I've used some threshold methods for filter the original frame and extract only the interested pixels.
+
+ - First I converted the frame from RGB to HLS since this color space shown to be more relevant for image filtering. Then I applied some threshold on each HLS channel:
+ 
+ ```python
+h_thresh = (5, 100)
+l_thresh = (210, 255)
+s_thresh = (100, 255)
+```
+
+- After that I combined the individual thresholded binary image. The function can be found at lines 128 through 146 in `AdvancedComputerVision.py'.
+- The next step was applying the Sobel ( x oriented ), Magnitude and Direction thresholds in the undistorted frame, then combined them in an individual binary image using the following combination ( the threshold functions can be found at lines 48 through 146 in `AdvancedComputerVision.py' ):
+
+ ```python
+combined_thres[(sxbinary == 1) | ((mag_binary == 1) & (dir_binary == 1))] = 1
+```
+
+- Then I joined this binary image and the hls thresholded image into a final thresholded combination.
+
+ ```python
+combined_binary[(combined_hls == 1) | (combined_thres == 1)] = 1
+```
+
+- Finally, using a set of vertices which surround the lane-lines, I applied a mask to thresholded image to get only the pixels in a region of interest.
+
+Here's an example of a output for this step:
 
 ![alt text][image3]
 
-#### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
+#### 3. Perspective Transform
 
-The code for my perspective transform includes a function called `warper()`, which appears in lines 1 through 8 in the file `example.py` (output_images/examples/example.py) (or, for example, in the 3rd code cell of the IPython notebook).  The `warper()` function takes as inputs an image (`img`), as well as source (`src`) and destination (`dst`) points.  I chose the hardcode the source and destination points in the following manner:
-
+The perpective transform is applied by the function `warp_image()`, which is defined in lines 173 through 185 in the file `AdvancedComputerVision.py`. This function takes a input image (in this case the masked_edges images from the previous step), the source and the destination points. The source points were hardcoded based on an image with straight lane-lines, where the edges of lanes were used as vertices for the source. The destination points are based on the image width and height, considering a couple of offsets (`w_offset` and `h_offset`). The values follow below:
 ```python
-src = np.float32(
-    [[(img_size[0] / 2) - 55, img_size[1] / 2 + 100],
-    [((img_size[0] / 6) - 10), img_size[1]],
-    [(img_size[0] * 5 / 6) + 60, img_size[1]],
-    [(img_size[0] / 2 + 55), img_size[1] / 2 + 100]])
-dst = np.float32(
-    [[(img_size[0] / 4), 0],
-    [(img_size[0] / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), 0]])
+src = np.float32([[200,720],
+                  [588,450],
+                  [693,450],
+                  [1120,720]])
+dst = np.float32([[w_offset, img_h - h_offset],
+                  [w_offset, h_offset],
+                  [img_w - w_offset, h_offset],
+                  [img_w - w_offset, img_h - h_offset]])
 ```
 
-This resulted in the following source and destination points:
+Considering `w_offset = 350` and `h_offset = 0` the source and destination points are defined as:
 
 | Source        | Destination   | 
 |:-------------:|:-------------:| 
-| 585, 460      | 320, 0        | 
-| 203, 720      | 320, 720      |
-| 1127, 720     | 960, 720      |
-| 695, 460      | 960, 0        |
+| 200, 720      | 350, 720      | 
+| 588, 450      | 350, 0        |
+| 693, 450      | 930, 0        |
+| 1120, 720     | 930, 720      |
 
 I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto a test image and its warped counterpart to verify that the lines appear parallel in the warped image.
 
 ![alt text][image4]
 
-#### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
+#### 4. Lane-line pixels identification and polynomial fit
+
+In this step I checked whether a previous fit for the left and right lanes already exist, in order to optimize my search for the current line, which is defined in lines 126 through 131 in the file `AdvancedLaneLinesVideo.py`
+
+If the pipeline was running upon the first frame, or the current lane-line couldn't be found within the margin of the previous line fit, then I used the function `fit_polynomial()` (defined in lines 355 through 392 in the file `AdvancedComputerVision.py`) to detect the lane-line pixels and calculate the new polynomial fit.
+In order to find the lane pixels, the first action of `fit_polynomial()` function consist in calling `find_lane_pixels()` (lines 220 through 299 in the file `AdvancedComputerVision.py`), which steps are described as follow:
+ - First it take a histogram of the bottom half of the image;
+ - The peak of the left and right halves of the histogram are used to identify the lane-lines starting points;
+ 
+
+
+
+
+
+Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
 Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
 
