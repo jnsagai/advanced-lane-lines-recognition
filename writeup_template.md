@@ -151,7 +151,8 @@ Here is an example of my result on a test image:
 
 #### 1. Video result using my pipeline
 
-Here's a [link to my video result](./project_video.mp4)
+Here's a [link to my video result](./output_videos/project_video.mp4)
+
 
 ---
 
