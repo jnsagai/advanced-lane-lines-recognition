@@ -74,13 +74,13 @@ combined_binary[(combined_hls == 1) | (combined_thres == 1)] = 1
 
 - Finally, using a set of vertices which surround the lane-lines, I applied a mask to thresholded image to get only the pixels in a region of interest.
 
-Here's an example of a output for this step:
+Here's an example of an output for this step:
 
 ![alt text][image3]
 
 #### 3. Perspective Transform
 
-The perpective transform is applied by the function `warp_image()`, which is defined in lines 173 through 185 in the file `AdvancedComputerVision.py`. This function takes a input image (in this case the masked_edges images from the previous step), the source and the destination points. The source points were hardcoded based on an image with straight lane-lines, where the edges of lanes were used as vertices for the source. The destination points are based on the image width and height, considering a couple of offsets (`w_offset` and `h_offset`). The values follow below:
+The perspective transform is applied by the function `warp_image()`, which is defined in lines 173 through 185 in the file `AdvancedComputerVision.py`. This function takes an input image (in this case the masked_edges images from the previous step), the source and the destination points. The source points were hardcoded based on an image with straight lane-lines, where the edges of lanes were used as vertices for the source. The destination points are based on the image width and height, considering a couple of offsets (`w_offset` and `h_offset`). The values follow below:
 ```python
 src = np.float32([[200,720],
                   [588,450],
@@ -110,28 +110,38 @@ I verified that my perspective transform was working as expected by drawing the 
 In this step I checked whether a previous fit for the left and right lanes already exist, in order to optimize my search for the current line, which is defined in lines 126 through 131 in the file `AdvancedLaneLinesVideo.py`
 
 If the pipeline was running upon the first frame, or the current lane-line couldn't be found within the margin of the previous line fit, then I used the function `fit_polynomial()` (defined in lines 355 through 392 in the file `AdvancedComputerVision.py`) to detect the lane-line pixels and calculate the new polynomial fit.
-In order to find the lane pixels, the first action of `fit_polynomial()` function consist in calling `find_lane_pixels()` (lines 220 through 299 in the file `AdvancedComputerVision.py`), which steps are described as follow:
- - First it take a histogram of the bottom half of the image;
- - The peak of the left and right halves of the histogram are used to identify the lane-lines starting points;
- 
+In order to find the lane pixels, the first act of `fit_polynomial()` function consists in calling `find_lane_pixels()` (lines 220 through 299 in the file `AdvancedComputerVision.py`), which steps are described as follow:
+ - First, it takes a histogram of the bottom half of the image;
+ - The peak of the left and right halves of the histogram is used to identify the lane-lines starting points;
+ - Using the "Slicing Windows" method, a series of consecutive rectangular regions are defined in order to identify the relevant lane-line pixels for each side. The first window is center in the starting point defined in the previous step, then the next windows are center in the mean point of the found pixels inside the current window. Each set of pixels from each window are appended in a list.
+ - After that, all the relevant lane-line pixels are returned to the `fit_polynomial()` function.
 
-
-
-
-
-Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
-
-Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+Using the left and right lane-line pixels, the function `np.polyfit()` is used to calculate the 2nd order polynomial coefficients for each curve. Finally, the polynomial curve, the sliding windows, and the left and right lane-line pixels are drawn in a composed image, as can be in the next image.
+For the next next frames, first, it is checked whether the new lane can be found inside a region near to the previous one. The function `search_around_poly()` is used for this purpose (defined in lines 318 through 353 in the file `AdvancedComputerVision.py`). This function uses a margin around the previous polynomial and tries to reach the lane curve inside it. In this way, the pipeline performance can be improved, since part of the lane finding can be skipped and the pixel searching process is optimized.
 
 ![alt text][image5]
 
-#### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
+#### 5. The Radius of Curvature and Vehicle position
 
-I did this in lines # through # in my code in `my_other_file.py`
+In this step, the radius of the curvature of the lane can be calculated based on the following equation [Radius of Curvature](https://www.intmath.com/applications-differentiation/8-radius-curvature.php).
+Since we are dealing with the image in pixels space, it is needed to convert them to real-world metrics. In this case, meters.
+As we are using US road examples, we can use US regulations that require a minimum lane width of 3.7 meters, and the dashed lane lines are 3 meters long each. We can capture the distance of the pixel between the lane and the dashed lane length from the warped frame in order to get a conversion factor. In this particular case I'm using the following factors:
 
-#### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
+```python
+ym_per_pix = 30/720 # meters per pixel in y dimension
+xm_per_pix = 3.7/700 # meters per pixel in x dimension
+```
+By using the lane-lines polynomial fit values and the conversion factors, and applying the Radius of Curvature formula, we can reach the approximate curvature for each lane. The  code is implemented in lines 393 through 417 in the file `AdvancedComputerVision.py`
 
-I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
+The position of the car is calculated relative to the center point between the lanes. Considering the assumption that the camera is positioned in the center of the vehicle, the car position can be estimated by calculating the deviation of the frame's center point and the lanes' center point. Afterward, the value is converted to meters by using the `xm_per_pix` factor. The  code is implemented in lines 419 through 445 in the file `AdvancedComputerVision.py`
+
+A low-pass filter was created based on both lane curvature and the car position values, in order to reduce the bouncing between the frame. I created a circular buffer class where I can store the last "n" measurements, and then I just take the average of the measures to be displayed in the final frame.
+
+#### 6. Final image result
+
+Finally, the warped image can be unwarped to the original perspective, by using the inversion M matrix. The function `draw_lines_original_image()` (defined in lines 447 through 480 in the file `AdvancedComputerVision.py`) is used for this purpose. Also, the pixels for each lane side are highlighted in different colors ( red for left lane and blue for right lane ), and a filled polygon is also drawn in the image ( green background ). Then the lane curvature and the car position are printed at the top of the frame.
+
+Here is an example of my result on a test image:
 
 ![alt text][image6]
 
@@ -139,7 +149,7 @@ I implemented this step in lines # through # in my code in `yet_another_file.py`
 
 ### Pipeline (video)
 
-#### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
+#### 1. Video result using my pipeline
 
 Here's a [link to my video result](./project_video.mp4)
 
@@ -147,6 +157,6 @@ Here's a [link to my video result](./project_video.mp4)
 
 ### Discussion
 
-#### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
-
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
+I'm still facing some problems in trying to find the best set of parameters for the threshold methods. I spent a great amount of time in this task and I think that the final result could be even better if I was able to optimize the parameters and also the combination of the thresholds. One strategy that I'd like to test in the near future is to create a genetic algorithm for this purpose. I'll research also other methods related to lane detection.
+My current algorithm is still using a mask to isolate only an ROI in the frame, whoever this approach is not really generic, and only gets the good result for lanes with fewer curvatures. 
+I need to implement also some low-filters in the lane pixels themselves, in order to reduce the frame bouncing and increase the robustness.
