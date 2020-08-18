@@ -161,3 +161,5 @@ Here's a [link to my video result](./output_videos/project_video.mp4)
 I'm still facing some problems in trying to find the best set of parameters for the threshold methods. I spent a great amount of time in this task and I think that the final result could be even better if I was able to optimize the parameters and also the combination of the thresholds. One strategy that I'd like to test in the near future is to create a genetic algorithm for this purpose. I'll research also other methods related to lane detection.
 My current algorithm is still using a mask to isolate only an ROI in the frame, whoever this approach is not really generic, and only gets the good result for lanes with fewer curvatures. 
 I need to implement also some low-filters in the lane pixels themselves, in order to reduce the frame bouncing and increase the robustness.
+
+Finally, I was not able to accomplish the two challenges for this project, but I'll improve my pipeline and work on them sooner :)
