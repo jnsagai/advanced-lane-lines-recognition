@@ -318,7 +318,6 @@ def fit_poly(img_shape, leftx, lefty, rightx, righty):
 def search_around_poly(binary_warped, prev_left_fit, prev_right_fit):
     # HYPERPARAMETER
     # Choose the width of the margin around the previous polynomial to search
-    # The quiz grader expects 100 here, but feel free to tune on your own!
     margin = 100
 
     # Grab activated pixels
@@ -397,9 +396,7 @@ def measure_curvature_real(ploty, roi_pixels):
     '''
     # Define conversions in x and y from pixels space to meters
     ym_per_pix = 30/720 # meters per pixel in y dimension
-    #ym_per_pix = 30/810 # meters per pixel in y dimension
     xm_per_pix = 3.7/700 # meters per pixel in x dimension
-    #xm_per_pix = 3.7/515 # meters per pixel in x dimension
     
     # Unpack the ROI pixels
     leftx = roi_pixels['left_x']
